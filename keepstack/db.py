@@ -72,6 +72,9 @@ CREATE INDEX IF NOT EXISTS idx_assets_sha    ON assets (sha256);
 CREATE INDEX IF NOT EXISTS idx_assets_status ON assets (status);
 CREATE INDEX IF NOT EXISTS idx_assets_media  ON assets (media_type);
 CREATE INDEX IF NOT EXISTS idx_assets_created ON assets (created_at);
+-- Pagination orders by (created_at, id); the composite index keeps that stable
+-- sort cheap even when many rows share the same timestamp.
+CREATE INDEX IF NOT EXISTS idx_assets_created_id ON assets (created_at, id);
 
 CREATE TABLE IF NOT EXISTS asset_metadata (
     asset_id  INTEGER PRIMARY KEY,
@@ -181,6 +184,10 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log (ts);
 
+-- Tag and collection filters run as EXISTS subqueries keyed by asset id.
+CREATE INDEX IF NOT EXISTS idx_asset_tags_tag ON asset_tags (tag_id, asset_id);
+CREATE INDEX IF NOT EXISTS idx_collection_assets_ca ON collection_assets (collection_id, asset_id);
+
 CREATE TABLE IF NOT EXISTS saved_searches (
     id         INTEGER PRIMARY KEY,
     user_id    INTEGER,
@@ -221,6 +228,22 @@ def transaction() -> Iterator[sqlite3.Connection]:
     except Exception:
         conn.rollback()
         raise
+
+
+def close_conn() -> None:
+    """Close the connection cached for the current thread.
+
+    Tests redirect ``config`` at a temporary directory; dropping the cached
+    connection makes sure the next query opens the new database file. Also
+    handy before deleting a data directory on Windows, where an open handle
+    blocks the delete.
+    """
+    conn = getattr(_local, "conn", None)
+    if conn is not None:
+        try:
+            conn.close()
+        finally:
+            _local.conn = None
 
 
 def init_db() -> None:
