@@ -18,7 +18,7 @@ from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
                                PlainTextResponse, Response)
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__, ingest, search, standards, storage, thumbnails
+from . import __version__, export, ingest, search, standards, storage, thumbnails
 from .audit import log, now_iso
 from .auth import (authenticate, hash_password, login_locked, make_token,
                    note_login_failure, note_login_success, role_at_least,
@@ -178,16 +178,47 @@ def list_assets(
     q: str = "",
     media_type: Optional[str] = None,
     tag: Optional[str] = None,
+    tags: Optional[list[str]] = Query(None),
+    exclude_tags: Optional[list[str]] = Query(None),
     collection_id: Optional[int] = None,
     status: str = "active",
     sort: str = "newest",
     mode: str = "keyword",
-    limit: int = Query(60, le=200),
-    offset: int = 0,
+    page: Optional[int] = Query(None, ge=1),
+    page_size: Optional[int] = Query(None, ge=1, le=100),
+    limit: int = Query(60, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     user: dict = Depends(require_user),
 ):
-    return search.search(q=q, media_type=media_type, tag=tag, collection_id=collection_id,
-                         status=status, sort=sort, mode=mode, limit=limit, offset=offset)
+    """Filtered, sorted, paged listing.
+
+    Invalid paging values are rejected by FastAPI (422). A page past the end
+    returns an empty list with the real total instead of a 404.
+    """
+    return search.search(q=q, media_type=media_type, tag=tag, tags=tags or (),
+                         exclude_tags=exclude_tags or (), collection_id=collection_id,
+                         status=status, sort=sort, mode=mode, page=page,
+                         page_size=page_size, limit=limit, offset=offset)
+
+
+# NOTE: this route must stay above /api/assets/{uuid}. Starlette matches in
+# registration order and would otherwise treat "export.csv" as an asset uuid.
+@app.get("/api/assets/export.csv")
+def export_assets(
+    q: str = "",
+    media_type: Optional[str] = None,
+    tags: Optional[list[str]] = Query(None),
+    exclude_tags: Optional[list[str]] = Query(None),
+    collection_id: Optional[int] = None,
+    sort: str = "newest",
+    user: dict = Depends(require_user),
+):
+    """Download every match (not just the current page) as CSV."""
+    where_sql, params, order_sql = search.build_filters(
+        q=q, media_type=media_type, collection_id=collection_id,
+        tags=tags or (), exclude_tags=exclude_tags or (), sort=sort,
+    )
+    return export.csv_response(where_sql, params, order_sql)
 
 
 def _get_asset_or_404(uuid: str) -> dict:
@@ -238,7 +269,12 @@ def update_asset(uuid: str, request: Request, body: dict = Body(...),
         with transaction() as conn:
             conn.execute(f"UPDATE assets SET {', '.join(sets)} WHERE id = ?", vals)
         ingest.reindex_fts(a["id"])
-        ingest.reindex_embedding(a["id"])
+        try:
+            ingest.reindex_embedding(a["id"])
+        except Exception:
+            # Embeddings are optional. A disabled model or missing blob must
+            # not turn a committed edit into a 500.
+            pass
         log("asset.update", user=user, target_type="asset", target_id=uuid,
             detail=",".join(body.keys()), ip=client_ip(request))
     return asset_detail(uuid, user)
