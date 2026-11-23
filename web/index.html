@@ -31,7 +31,7 @@
       </div>
       <div class="search-box">
         <input id="search" placeholder="Search assets, tags, metadata...">
-        <select id="search-mode" title="Search mode">
+        <select id="search-mode" title="Search mode" hidden>
           <option value="keyword">Keyword</option>
           <option value="semantic">Semantic</option>
         </select>
@@ -57,12 +57,13 @@
 
         <div id="facets" class="facets">
           <div class="facet-group">
-            <h4>Media type</h4>
+            <h4>Media type (catalog)</h4>
             <ul id="facet-media"></ul>
           </div>
           <div class="facet-group">
-            <h4>Top tags</h4>
+            <h4>Top tags (catalog)</h4>
             <ul id="facet-tags"></ul>
+            <p class="facet-hint">Click a tag to require it. Click &times; to exclude it.</p>
           </div>
         </div>
       </aside>
@@ -72,17 +73,40 @@
           <div class="view-head">
             <h2 id="result-title">Library</h2>
             <div class="view-controls">
-              <span id="active-filter" class="chip hidden"></span>
-              <select id="sort">
-                <option value="newest">Newest</option>
-                <option value="oldest">Oldest</option>
-                <option value="name">Name</option>
-                <option value="largest">Largest</option>
+              <select id="sort" title="Sort by created time">
+                <option value="newest">Created: newest first</option>
+                <option value="oldest">Created: oldest first</option>
               </select>
+              <button id="btn-export" class="btn">Export CSV</button>
             </div>
           </div>
+
+          <div class="filter-bar">
+            <label class="filter-field">Collection
+              <select id="filter-collection">
+                <option value="">All collections</option>
+              </select>
+            </label>
+            <label class="filter-field grow">Tags
+              <input id="filter-tags" list="tag-options"
+                     placeholder="approved, campaign, -internal (Enter to apply)">
+            </label>
+            <datalist id="tag-options"></datalist>
+            <button id="btn-apply-tags" class="btn">Apply tags</button>
+            <button id="btn-clear-filters" class="btn btn-ghost">Clear all</button>
+          </div>
+
+          <div id="filter-chips" class="filter-chips hidden"></div>
+          <div id="load-error" class="load-error hidden"></div>
+
           <div id="grid" class="grid"></div>
           <div id="empty" class="empty hidden">No assets yet. Click Upload to get started.</div>
+
+          <div id="pager" class="pager hidden">
+            <button id="pg-prev" class="btn">Previous</button>
+            <span id="pg-info" class="muted"></span>
+            <button id="pg-next" class="btn">Next</button>
+          </div>
         </div>
 
         <div id="view-collections" class="view hidden">
