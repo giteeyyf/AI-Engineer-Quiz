@@ -15,7 +15,8 @@ import uvicorn
 def main() -> None:
     if len(sys.argv) > 1 and sys.argv[1] == "seed":
         from .seed import run_seed
-        run_seed()
+        # ``seed --demo`` adds the campaign dataset used by the review scenario.
+        run_seed(with_demo="--demo" in sys.argv[2:])
         return
     if len(sys.argv) > 1 and sys.argv[1] == "reindex":
         from . import vision
