@@ -133,10 +133,10 @@ function parseTagInput(raw) {
 
 function applyTagInput() {
   const parsed = parseTagInput($("#filter-tags").value);
-  // The UI keeps a tag on one side only; the API still handles conflicts.
-  const include = parsed.include.filter(t => !parsed.exclude.includes(t));
+  // Contradictory input is kept as typed: the API returns no rows, and the
+  // chips show both sides so the empty result is explainable.
   $("#filter-tags").value = "";
-  setFilter({ includeTags: include, excludeTags: parsed.exclude });
+  setFilter({ includeTags: parsed.include, excludeTags: parsed.exclude });
 }
 
 function toggleTag(kind, name) {
@@ -218,13 +218,23 @@ function hasFilters() {
             state.includeTags.length || state.excludeTags.length);
 }
 
+function tagConflict() {
+  return state.includeTags.some(t => state.excludeTags.includes(t));
+}
+
 function renderGrid(items, total) {
   $("#result-title").textContent = `Results (${total})`;
   const empty = $("#empty");
   empty.classList.toggle("hidden", items.length > 0);
-  empty.innerHTML = hasFilters()
-    ? 'No assets match these filters. <button class="btn" id="empty-clear">Clear filters</button>'
-    : 'No assets yet. Click Upload to get started.';
+  if (tagConflict()) {
+    empty.innerHTML = 'A tag is both required and excluded, so no asset can match. ' +
+      '<button class="btn" id="empty-clear">Clear filters</button>';
+  } else if (hasFilters()) {
+    empty.innerHTML = 'No assets match these filters. ' +
+      '<button class="btn" id="empty-clear">Clear filters</button>';
+  } else {
+    empty.innerHTML = 'No assets yet. Click Upload to get started.';
+  }
   $("#empty-clear")?.addEventListener("click", clearFilters);
   $("#grid").innerHTML = items.map(a => `
     <div class="card" data-uuid="${a.uuid}">
