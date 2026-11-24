@@ -7,7 +7,7 @@ Keepstack 素材检索与结果导出改造作业的交付说明。
 | 项 | 值 |
 | --- | --- |
 | Fork | https://github.com/giteeyyf/AI-Engineer-Quiz |
-| 分支 | `feat/library-filter-export` |
+| 分支 | `feat/library-filter-export`（https://github.com/giteeyyf/AI-Engineer-Quiz/tree/feat/library-filter-export） |
 | 起点 | `main` @ `3aa137ccde6f981981582f6f71b81448c72a9dab`（收题时的上游 HEAD） |
 | 提交方式 | 按开发顺序多次提交，未 squash / amend / rebase；最终 commit SHA 见分支 HEAD |
 
@@ -39,7 +39,7 @@ KEEPSTACK_AI_ENABLED=false KEEPSTACK_OCR_ENABLED=false .venv/Scripts/python -m k
 
 数据说明：
 
-- `seed`：24 个素材、3 个集合，与上游说明一致；已补 `approved` / `campaign` / `internal` 等业务标签，并让 3 条素材共用同一 `created_at`。
+- `seed`：24 个素材、3 个集合，与上游说明一致；已补 `approved` / `campaign` / `internal` 等业务标签，并让 6 条素材共用同一 `created_at`（另有 4 条并列），用于验证同时间戳分页。
 - `seed --demo`：追加 28 条 `Harbor Campaign` 素材（含 2 个 txt 文档），共 52 条、4 个集合。业务场景在此集合中有 16 条匹配，每页 12 条正好两页。
 
 重复执行 seed 是安全的：内容寻址去重、标签写入用 `INSERT OR IGNORE`、集合按名称复用；实测连跑两次仍为 52 条素材、4 个集合。
@@ -169,6 +169,7 @@ curl -s -o export.csv "localhost:8000/api/assets/export.csv?q=harbor&collection_
 - 标签面板只列出目录里已存在的标签，不支持在筛选时新建标签；新建标签仍在素材详情里完成。
 - `status` 查询参数保留但列表恒为 `active`，传其他值不会放宽结果。
 - 导出列为固定集合，不支持自选列；导出不含素材文件。
+- 导出采用流式响应，读库中途异常会留下截断的 CSV；正常查询不会触发。
 - 未做跨请求快照，列表与导出分别查询。
 
 未完成项：
