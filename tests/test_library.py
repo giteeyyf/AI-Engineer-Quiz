@@ -230,5 +230,18 @@ def test_edits_are_reflected_in_the_next_query_and_export(client, make_asset):
     assert _list(client, tags=["approved", "campaign"]).json()["total"] == 0
 
 
+def test_media_type_filter_applies_to_export(client, make_asset):
+    make_asset(uuid="img", title="Harbor image", media_type="image")
+    make_asset(uuid="doc", title="Harbor document", media_type="document")
+    make_asset(uuid="vid", title="Harbor video", media_type="video")
+
+    listed = _list(client, q="harbor", media_type="document").json()
+    assert _uuid_list(listed) == ["doc"]
+
+    rows = _csv_rows(_export(client, q="harbor", media_type="document"))
+    assert [row[0] for row in rows[1:]] == ["doc"]
+    assert rows[1][4] == "document"
+
+
 def test_export_requires_login(anon_client):
     assert anon_client.get("/api/assets/export.csv").status_code == 401
