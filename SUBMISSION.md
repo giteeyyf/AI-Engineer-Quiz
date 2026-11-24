@@ -48,7 +48,7 @@ KEEPSTACK_AI_ENABLED=false KEEPSTACK_OCR_ENABLED=false .venv/Scripts/python -m k
 
 1. 登录后用左侧 Collections 进入 `Harbor Campaign`，或在 Library 的 Collection 下拉里选择它。
 2. 搜索框输入 `harbor`。
-3. 在 Tags 输入框填 `approved, campaign, -internal`，回车。`-` 前缀表示排除。
+3. 点 Tags 按钮，在弹出面板里勾选 `approved`、`campaign` 的 Include，勾选 `internal` 的 Exclude，点 Done。
 4. 页面顶部显示生效条件 chips，底部显示 `Page 1 / 2 · 16 matching assets`，可上一页 / 下一页。
 5. 排序下拉切换 `Created: newest first` / `oldest first`，切换后回到第 1 页。
 6. 点 `Export CSV` 下载当前全部匹配（不受分页限制）。
@@ -85,7 +85,7 @@ curl -s -o export.csv "localhost:8000/api/assets/export.csv?q=harbor&collection_
 | 非法分页 | `page=0`、`page_size=999`、`page=abc` 返回 422；`page=99` 返回 200、items 空、total 真实 |
 | 未登录导出 | 401 |
 | 修改后一致 | 改标题/描述/标签后，下一次列表、筛选与导出立即反映 |
-| 矛盾标签 | 输入 `approved, -approved` 返回 0 条，chips 同时显示两侧，空态说明原因 |
+| 矛盾标签（接口） | `tags=approved&exclude_tags=approved` 返回 0 条，导出仅表头 |
 | 失败态 | 列表请求中断显示横幅并保留上次结果，重试后恢复；导出中断弹 `Export failed` 提示 |
 
 浏览器自动化走通了完整路径：登录 → 选集合 → 输入关键词与标签 → 翻页 → 切换排序 → 下载 CSV，页面无错误横幅。
@@ -118,10 +118,10 @@ curl -s -o export.csv "localhost:8000/api/assets/export.csv?q=harbor&collection_
 
 ### 5.2 前端
 
-- 筛选栏：集合下拉、标签输入（逗号或空格分隔，`-` 前缀排除，`datalist` 补全）、应用与清除。
+- 筛选栏：集合下拉、标签面板（全量标签 + 搜索框，每行 Include / Exclude 两个复选框，同一标签两侧互斥）、清除按钮。
 - 侧栏标签：点标签名切换包含，点 `×` 切换排除；统计数字标注为全库口径，不冒充当前匹配数。
 - 生效条件 chips 由后端 `applied` 回显渲染，单个可删，另有清除全部。
-- 同一标签同时出现在包含与排除时，两侧条件都保留，结果为空并在空态里说明原因，与接口语义一致。
+- 面板里同一标签只能选 Include 或 Exclude 一侧；接口仍按需求对两侧冲突返回空结果。
 - 分页器：上一页 / 第 x / y 页 / 共 n 条 / 下一页。
 - 导出：`fetch` 带 Bearer token 取 blob，解析 `Content-Disposition` 中文文件名，失败用 toast 提示。
 - 请求竞态：`AbortController` + 递增序号，迟到的旧响应直接丢弃；筛选或排序变化统一回到第 1 页。
@@ -166,7 +166,7 @@ curl -s -o export.csv "localhost:8000/api/assets/export.csv?q=harbor&collection_
 - 标签为完整名称精确匹配，无模糊与前缀；CJK 没有分词，连续中文按单个 token 前缀匹配。
 - 侧栏 facets 与标签计数是全库统计，不随筛选联动，界面已标注 `(catalog)`。
 - OFFSET 分页在并发写入下可能漂移；本次验收口径为数据不变，未引入 keyset 分页。
-- 标签输入框按逗号或空格切分，含空格或逗号的标签名无法从输入框添加，可从侧栏点击。
+- 标签面板只列出目录里已存在的标签，不支持在筛选时新建标签；新建标签仍在素材详情里完成。
 - `status` 查询参数保留但列表恒为 `active`，传其他值不会放宽结果。
 - 导出列为固定集合，不支持自选列；导出不含素材文件。
 - 未做跨请求快照，列表与导出分别查询。
