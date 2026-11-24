@@ -71,7 +71,7 @@ curl -s -o export.csv "localhost:8000/api/assets/export.csv?q=harbor&collection_
 
 ## 4. 实测结果
 
-本机 Windows 11、Python 3.12.15、Edge 无头浏览器实测。
+本机 Windows 10、Python 3.12.15、Edge 无头浏览器实测。
 
 | 项目 | 结果 |
 | --- | --- |
@@ -177,3 +177,30 @@ curl -s -o export.csv "localhost:8000/api/assets/export.csv?q=harbor&collection_
 - 未提供页大小切换（固定 12）。
 - 未补语义搜索的自动化测试。
 - 未做大数据量下的导出耗时与内存压测。
+
+## 9. Windows 下 pytest 启动报 WinError 5
+
+现象：pytest 还没收集用例就退出，报 `PermissionError: [WinError 5] 拒绝访问`，路径是
+`C:\Users\<user>\AppData\Local\Temp\pytest-of-Windows\pytest-current`。
+
+原因：`pytest-current` 是 pytest 每次会话重建的目录符号链接。上一次运行被中断，或两次
+pytest 同时运行时，这个重解析点可能损坏；下次启动在 `cleanup_dead_symlinks` 里对它
+`os.stat`，Windows 直接拒绝访问。与项目代码无关。
+
+处理（PowerShell）：
+
+```powershell
+$root = Join-Path $env:TEMP "pytest-of-Windows"
+if (Test-Path (Join-Path $root "pytest-current")) {
+    (Get-Item (Join-Path $root "pytest-current") -Force).Delete()
+}
+```
+
+或者绕开系统临时目录：
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q --basetemp=.pytest-tmp
+```
+
+`.pytest-tmp/` 已加入 `.gitignore`。不要同时开两个 pytest 会话指向同一个临时根目录。
+
