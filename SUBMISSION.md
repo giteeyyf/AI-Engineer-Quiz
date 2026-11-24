@@ -75,15 +75,18 @@ curl -s -o export.csv "localhost:8000/api/assets/export.csv?q=harbor&collection_
 
 | 项目 | 结果 |
 | --- | --- |
-| 全量测试 | `35 passed, 2 skipped`，约 3.7 秒 |
+| 全量测试 | `36 passed, 2 skipped`，约 3 秒 |
 | `seed` | 24 素材 / 3 集合，默认分页 2 页 |
 | `seed --demo` | 52 素材 / 4 集合，约 7 秒 |
 | 场景筛选 | total 16，pages 2；第 1 页 12 条，第 2 页 4 条，两页 uuid 无交集 |
 | 导出 | 16 条数据 + 表头，2900 字节；UTF-8 BOM、CRLF；下载文件名 `素材清单-YYYYMMDD-HHMMSS.csv` |
+| 媒体类型导出 | 筛选 `document` 导出 2 行，`media_type` 全部为 document |
 | 特殊字符 | `q=!!!` 返回 200 且 total 0；`q=100%`、`q=a-b` 返回 200 |
 | 非法分页 | `page=0`、`page_size=999`、`page=abc` 返回 422；`page=99` 返回 200、items 空、total 真实 |
 | 未登录导出 | 401 |
 | 修改后一致 | 改标题/描述/标签后，下一次列表、筛选与导出立即反映 |
+| 矛盾标签 | 输入 `approved, -approved` 返回 0 条，chips 同时显示两侧，空态说明原因 |
+| 失败态 | 列表请求中断显示横幅并保留上次结果，重试后恢复；导出中断弹 `Export failed` 提示 |
 
 浏览器自动化走通了完整路径：登录 → 选集合 → 输入关键词与标签 → 翻页 → 切换排序 → 下载 CSV，页面无错误横幅。
 
@@ -118,6 +121,7 @@ curl -s -o export.csv "localhost:8000/api/assets/export.csv?q=harbor&collection_
 - 筛选栏：集合下拉、标签输入（逗号或空格分隔，`-` 前缀排除，`datalist` 补全）、应用与清除。
 - 侧栏标签：点标签名切换包含，点 `×` 切换排除；统计数字标注为全库口径，不冒充当前匹配数。
 - 生效条件 chips 由后端 `applied` 回显渲染，单个可删，另有清除全部。
+- 同一标签同时出现在包含与排除时，两侧条件都保留，结果为空并在空态里说明原因，与接口语义一致。
 - 分页器：上一页 / 第 x / y 页 / 共 n 条 / 下一页。
 - 导出：`fetch` 带 Bearer token 取 blob，解析 `Content-Disposition` 中文文件名，失败用 toast 提示。
 - 请求竞态：`AbortController` + 递增序号，迟到的旧响应直接丢弃；筛选或排序变化统一回到第 1 页。
@@ -137,6 +141,17 @@ curl -s -o export.csv "localhost:8000/api/assets/export.csv?q=harbor&collection_
 | 标签用 `|` 分隔 | 不会与 CSV 的逗号冲突，Excel 打开不会误拆列 |
 | `seed --demo` 而不是扩充默认 seed | 保持 README 的 24 条口径，同时给评审一条命令拿到多页场景 |
 | 前端零构建增量改造 | 保留原技术栈与页面结构，降低评审阅读成本 |
+
+### 6.1 新增组件的收益与成本
+
+| 新增组件 | 收益 | 成本 |
+| --- | --- | --- |
+| `keepstack/export.py` | CSV 细节集中在一处，复用同一份筛选与排序；流式输出内存有界 | 多一个模块；流式中途异常会截断下载，需要单独说明 |
+| `db.py` 三个复合索引 | 排序与标签/集合 EXISTS 过滤走索引，数据量增长后仍然稳定 | 写入略慢，库文件略大 |
+| `tests/conftest.py` + `test_library.py` | 14 个接口级用例覆盖验收点，改坏接口会立即变红 | 需要维护固定夹具与逐用例清库逻辑 |
+| 前端筛选栏、chips、分页器 | 条件可见、可改、可清；chips 只渲染后端回显，状态不会说谎 | 原生 JS 状态变多，需要 AbortController 与序号防竞态 |
+| `seed --demo` | 一条命令复现多页业务场景，不污染默认 24 条口径 | 种子多 28 条素材，生成约 5 秒 |
+| `db.close_conn()` | 测试可安全重定向数据目录；Windows 下能及时释放文件句柄 | 多一个公共函数需要维护 |
 
 ## 7. 修复的范围外缺陷
 
