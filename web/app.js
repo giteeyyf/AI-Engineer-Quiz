@@ -3,7 +3,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const state = { token: localStorage.getItem("keepstack_token"), user: null,
   q: "", mode: "keyword", media: null, collection: null, collectionName: null,
-  includeTags: [], excludeTags: [], sort: "newest",
+  includeTags: [], excludeTags: [], allTags: [], sort: "newest",
   page: 1, pageSize: 12, total: 0, pages: 0,
   reqSeq: 0, controller: null, recovering: false };
 
@@ -77,10 +77,6 @@ $("#sort").addEventListener("change", (e) => setFilter({ sort: e.target.value })
 $("#filter-collection").addEventListener("change", (e) => {
   setFilter({ collection: e.target.value || null });
 });
-$("#btn-apply-tags").addEventListener("click", applyTagInput);
-$("#filter-tags").addEventListener("keydown", (e) => {
-  if (e.key === "Enter") { e.preventDefault(); applyTagInput(); }
-});
 $("#btn-clear-filters").addEventListener("click", clearFilters);
 $("#pg-prev").addEventListener("click", () => { if (state.page > 1) { state.page -= 1; loadLibrary(); } });
 $("#pg-next").addEventListener("click", () => { if (state.page < state.pages) { state.page += 1; loadLibrary(); } });
@@ -105,6 +101,45 @@ $("#filter-chips").addEventListener("click", (e) => {
   removeChip(btn.dataset.chip);
 });
 
+// Tag picker: one row per tag, two explicit checkboxes. Include and exclude
+// are mutually exclusive per tag in the UI; the API still handles conflicts.
+$("#tag-picker-toggle").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const panel = $("#tag-picker");
+  panel.classList.toggle("hidden");
+  $("#tag-picker-toggle").setAttribute("aria-expanded", String(!panel.classList.contains("hidden")));
+});
+$("#tag-picker").addEventListener("click", (e) => e.stopPropagation());
+document.addEventListener("click", () => {
+  $("#tag-picker").classList.add("hidden");
+  $("#tag-picker-toggle").setAttribute("aria-expanded", "false");
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  $("#tag-picker").classList.add("hidden");
+  $("#tag-picker-toggle").setAttribute("aria-expanded", "false");
+});
+$("#tag-picker-done").addEventListener("click", () => {
+  $("#tag-picker").classList.add("hidden");
+  $("#tag-picker-toggle").setAttribute("aria-expanded", "false");
+});
+$("#tag-search").addEventListener("input", renderTagList);
+$("#tag-picker-clear").addEventListener("click", () => {
+  setFilter({ includeTags: [], excludeTags: [] });
+  renderTagList();
+});
+$("#tag-list").addEventListener("change", (e) => {
+  const box = e.target;
+  if (!box.dataset || !box.dataset.mode) return;
+  const name = box.closest("[data-tag]").dataset.tag;
+  const include = state.includeTags.filter(t => t !== name);
+  const exclude = state.excludeTags.filter(t => t !== name);
+  if (box.checked && box.dataset.mode === "include") include.push(name);
+  if (box.checked && box.dataset.mode === "exclude") exclude.push(name);
+  setFilter({ includeTags: include, excludeTags: exclude });
+  syncTagPicker();
+});
+
 // Every filter change goes through here so the page always resets to 1.
 function setFilter(patch) {
   Object.assign(state, patch);
@@ -114,29 +149,41 @@ function setFilter(patch) {
 
 function clearFilters() {
   $("#search").value = "";
-  $("#filter-tags").value = "";
+  $("#tag-search").value = "";
   $("#filter-collection").value = "";
   setFilter({ q: "", media: null, collection: null, includeTags: [], excludeTags: [] });
+  renderTagList();
 }
 
-function parseTagInput(raw) {
-  const include = [], exclude = [];
-  raw.split(/[,，\s]+/).filter(Boolean).forEach((token) => {
-    const negated = token.startsWith("-");
-    const name = (negated ? token.slice(1) : token).trim().toLowerCase();
-    if (!name) return;
-    const target = negated ? exclude : include;
-    if (!target.includes(name)) target.push(name);
+function renderTagList() {
+  const term = ($("#tag-search").value || "").trim().toLowerCase();
+  const rows = state.allTags.filter(t => !term || t.name.includes(term));
+  $("#tag-list").innerHTML = rows.map(t => `
+    <div class="tag-row-pick" data-tag="${esc(t.name)}">
+      <span class="tag-name">${esc(t.name)}<span class="count">${t.count}</span></span>
+      <input type="checkbox" data-mode="include" aria-label="Include ${esc(t.name)}"
+             ${state.includeTags.includes(t.name) ? "checked" : ""}>
+      <input type="checkbox" data-mode="exclude" aria-label="Exclude ${esc(t.name)}"
+             ${state.excludeTags.includes(t.name) ? "checked" : ""}>
+    </div>`).join("") || '<p class="muted tag-empty">No tags match this search.</p>';
+  syncTagPickerLabel();
+}
+
+// Reflect sidebar clicks and chip removals into the picker without a reload.
+function syncTagPicker() {
+  $$("#tag-list .tag-row-pick").forEach(row => {
+    const name = row.dataset.tag;
+    row.querySelector('input[data-mode="include"]').checked = state.includeTags.includes(name);
+    row.querySelector('input[data-mode="exclude"]').checked = state.excludeTags.includes(name);
   });
-  return { include, exclude };
+  syncTagPickerLabel();
 }
 
-function applyTagInput() {
-  const parsed = parseTagInput($("#filter-tags").value);
-  // Contradictory input is kept as typed: the API returns no rows, and the
-  // chips show both sides so the empty result is explainable.
-  $("#filter-tags").value = "";
-  setFilter({ includeTags: parsed.include, excludeTags: parsed.exclude });
+function syncTagPickerLabel() {
+  const parts = [];
+  if (state.includeTags.length) parts.push(`${state.includeTags.length} include`);
+  if (state.excludeTags.length) parts.push(`${state.excludeTags.length} exclude`);
+  $("#tag-picker-toggle").textContent = parts.length ? `Tags: ${parts.join(", ")}` : "Tags: none";
 }
 
 function toggleTag(kind, name) {
@@ -177,8 +224,8 @@ function queryParams(forExport = false) {
 async function loadFilterOptions() {
   try {
     const [tags, cols] = await Promise.all([api("/api/tags"), api("/api/collections")]);
-    $("#tag-options").innerHTML = (tags.tags || [])
-      .map(t => `<option value="${esc(t.name)}"></option>`).join("");
+    state.allTags = (tags.tags || []).map(t => ({ name: t.name, count: t.c }));
+    renderTagList();
     $("#filter-collection").innerHTML = '<option value="">All collections</option>' +
       (cols.collections || []).map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join("");
   } catch { /* filter options are optional; the library still loads */ }
@@ -206,6 +253,7 @@ async function loadLibrary() {
     renderGrid(data.items, data.total);
     renderChips(data.applied);
     renderPager();
+    syncTagPicker();
     showError(null);
   } catch (err) {
     if (err.name === "AbortError" || seq !== state.reqSeq) return;
@@ -218,23 +266,13 @@ function hasFilters() {
             state.includeTags.length || state.excludeTags.length);
 }
 
-function tagConflict() {
-  return state.includeTags.some(t => state.excludeTags.includes(t));
-}
-
 function renderGrid(items, total) {
   $("#result-title").textContent = `Results (${total})`;
   const empty = $("#empty");
   empty.classList.toggle("hidden", items.length > 0);
-  if (tagConflict()) {
-    empty.innerHTML = 'A tag is both required and excluded, so no asset can match. ' +
-      '<button class="btn" id="empty-clear">Clear filters</button>';
-  } else if (hasFilters()) {
-    empty.innerHTML = 'No assets match these filters. ' +
-      '<button class="btn" id="empty-clear">Clear filters</button>';
-  } else {
-    empty.innerHTML = 'No assets yet. Click Upload to get started.';
-  }
+  empty.innerHTML = hasFilters()
+    ? 'No assets match these filters. <button class="btn" id="empty-clear">Clear filters</button>'
+    : 'No assets yet. Click Upload to get started.';
   $("#empty-clear")?.addEventListener("click", clearFilters);
   $("#grid").innerHTML = items.map(a => `
     <div class="card" data-uuid="${a.uuid}">
@@ -452,7 +490,7 @@ async function loadCollections() {
     || '<p class="muted">No collections yet.</p>';
   $$("#collection-list .collection-card").forEach(card => card.addEventListener("click", () => {
     $("#search").value = "";
-    $("#filter-tags").value = "";
+    $("#tag-search").value = "";
     $$(".nav-item").forEach(b => b.classList.remove("active"));
     $('.nav-item[data-view="library"]').classList.add("active");
     $$(".view").forEach(v => v.classList.add("hidden")); $("#view-library").classList.remove("hidden");

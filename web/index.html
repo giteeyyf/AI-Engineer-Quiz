@@ -87,12 +87,23 @@
                 <option value="">All collections</option>
               </select>
             </label>
-            <label class="filter-field grow">Tags
-              <input id="filter-tags" list="tag-options"
-                     placeholder="approved, campaign, -internal (Enter to apply)">
-            </label>
-            <datalist id="tag-options"></datalist>
-            <button id="btn-apply-tags" class="btn">Apply tags</button>
+            <div class="filter-field tag-filter">
+              <span>Tags</span>
+              <button type="button" id="tag-picker-toggle" class="tag-picker-toggle"
+                      aria-expanded="false" aria-controls="tag-picker">Tags: none</button>
+              <div id="tag-picker" class="tag-picker hidden">
+                <div class="tag-picker-head">
+                  <input id="tag-search" placeholder="Search tags">
+                  <button type="button" id="tag-picker-clear" class="btn btn-ghost">Clear</button>
+                </div>
+                <div class="tag-picker-columns"><span>Tag</span><span>Include</span><span>Exclude</span></div>
+                <div id="tag-list" class="tag-list"></div>
+                <div class="tag-picker-foot">
+                  <span class="muted">Include: must have all. Exclude: drop if any. Counts are catalog-wide.</span>
+                  <button type="button" id="tag-picker-done" class="btn">Done</button>
+                </div>
+              </div>
+            </div>
             <button id="btn-clear-filters" class="btn btn-ghost">Clear all</button>
           </div>
 
