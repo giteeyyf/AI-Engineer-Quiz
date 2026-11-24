@@ -158,6 +158,12 @@ curl -s -o export.csv "localhost:8000/api/assets/export.csv?q=harbor&collection_
 - `web/app.js` 的 `api()` 在传 `json` 时未设置请求方法，`fetch` 默认 GET 且带 body，浏览器直接抛错。表现为登录、新建集合等所有 JSON 写操作失效。已改为 `json` 请求默认 POST（显式传入的方法优先）。不修此缺陷无法从页面完成任何操作。
 - PATCH 编辑后 `reindex_embedding` 抛错会让已提交的修改返回 500。已用 try/except 隔离，FTS 仍在返回前同步完成。
 
+### 7.1 范围外问题记录（未修改）
+
+- `asset_fts` 没有外键约束。当前只有软删除，不会触发；若将来引入硬删除或直接删 `assets` 行，FTS 会留下孤儿行并产生幽灵命中。
+- `remove_tag` 只重建 FTS，不重建 embedding，相似素材可能继续使用旧向量；不影响本题的筛选、分页与导出。
+- 上传接口默认 `run_ai=True`，AI 关闭时仍会写入本地兜底标签，演示数据的标签数量会偏多；不影响筛选语义。
+
 ## 8. 限制与未完成项
 
 限制：
